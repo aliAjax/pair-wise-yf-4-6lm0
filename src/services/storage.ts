@@ -1,4 +1,5 @@
 import type { WindowScene } from '@/types'
+import { buildMergeMap, resolveRouteName } from '@/services/routeMerges'
 
 const STORAGE_KEY = 'bus_window_scenes'
 
@@ -24,14 +25,15 @@ export function deleteScene(id: string): void {
 }
 
 export function getScenesByRoute(routeName: string): WindowScene[] {
+  const map = buildMergeMap()
   return getAllScenes()
-    .filter((s) => s.routeName === routeName)
+    .filter((s) => resolveRouteName(s.routeName, map) === routeName)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 }
 
 export function getAllRouteNames(): string[] {
-  const scenes = getAllScenes()
-  const routeSet = new Set(scenes.map((s) => s.routeName))
+  const map = buildMergeMap()
+  const routeSet = new Set(getAllScenes().map((s) => resolveRouteName(s.routeName, map)))
   return Array.from(routeSet).sort()
 }
 

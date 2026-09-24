@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { resolveRouteName } from '@/services/routeMerges'
 import {
   WRITING_PROMPTS,
   getWeatherIcon,
@@ -57,6 +58,8 @@ export default function InspirePage() {
     }, 400)
   }, [refreshRandom])
 
+  const mainRoute = randomScene ? resolveRouteName(randomScene.routeName) : ''
+
   if (scenes.length === 0) {
     return (
       <div className="min-h-screen bg-teal-950 flex flex-col items-center justify-center px-6 text-center">
@@ -108,7 +111,12 @@ export default function InspirePage() {
             <div className="flex items-center justify-between text-sm text-mist-400">
               <div className="flex items-center gap-2">
                 <ArrowRight className="w-3.5 h-3.5 text-dusk-400" />
-                <span className="text-mist-100 font-medium">{randomScene.routeName}</span>
+                <span className="text-mist-100 font-medium">{mainRoute}</span>
+                {mainRoute !== randomScene.routeName && (
+                  <span className="text-[10px] text-mist-500">
+                    原:{randomScene.routeName}
+                  </span>
+                )}
                 <span className="text-mist-500">·</span>
                 <span>{randomScene.segment}</span>
               </div>

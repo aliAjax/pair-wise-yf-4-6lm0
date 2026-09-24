@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Search, Route, X, Trash2, Clock, MapPin } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Search, Route, X, Trash2, Clock, MapPin, Merge, Undo2 } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { buildMergeMap, resolveRouteName } from '@/services/routeMerges'
 import {
   formatTimestamp,
   getTimeOfDay,
@@ -11,18 +12,42 @@ import {
 import type { WindowScene } from '@/types'
 
 export default function TimelinePage() {
-  const { routeNames, selectedRoute, currentRouteScenes, selectRoute, loadAll, deleteScene } =
-    useSceneStore()
+  const {
+    routeNames,
+    selectedRoute,
+    currentRouteScenes,
+    selectRoute,
+    loadAll,
+    deleteScene,
+    merges,
+    mergeRoute,
+    undoLastMerge,
+  } = useSceneStore()
   const [search, setSearch] = useState('')
   const [detailScene, setDetailScene] = useState<WindowScene | null>(null)
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [mergeTarget, setMergeTarget] = useState('')
+  const [mergeError, setMergeError] = useState('')
+  const [toast, setToast] = useState('')
 
   useEffect(() => {
     loadAll()
   }, [loadAll])
 
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(''), 2600)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  const mergeMap = useMemo(() => buildMergeMap(merges), [merges])
+  const mainNameOf = (name: string) => resolveRouteName(name, mergeMap)
+
   const filteredRoutes = routeNames.filter((r) =>
     r.toLowerCase().includes(search.toLowerCase())
   )
+
+  const mergeCandidates = routeNames.filter((r) => r !== selectedRoute)
 
   const sorted = [...currentRouteScenes].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -31,6 +56,27 @@ export default function TimelinePage() {
   const handleDelete = (id: string) => {
     deleteScene(id)
     setDetailScene(null)
+  }
+
+  const openMergeModal = () => {
+    setMergeTarget('')
+    setMergeError('')
+    setMergeOpen(true)
+  }
+
+  const handleMergeConfirm = () => {
+    const result = mergeRoute(mergeTarget)
+    if (result.ok === false) {
+      setMergeError(result.error)
+      return
+    }
+    setMergeOpen(false)
+    setToast(`已归并:「${result.merge.alias}」→「${result.merge.target}」`)
+  }
+
+  const handleUndoMerge = () => {
+    const removed = undoLastMerge()
+    if (removed) setToast(`已撤销归并，恢复「${removed.alias}」的分组`)
   }
 
   return (
@@ -77,6 +123,28 @@ export default function TimelinePage() {
               </button>
             ))}
           </div>
+          {(selectedRoute || merges.length > 0) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedRoute && (
+                <button
+                  onClick={openMergeModal}
+                  className="flex items-center gap-1 rounded-full bg-teal-900 px-3 py-1.5 text-xs text-mist-300 transition-colors hover:bg-teal-800"
+                >
+                  <Merge className="w-3 h-3" />
+                  将「{selectedRoute}」归并到其他线路
+                </button>
+              )}
+              {merges.length > 0 && (
+                <button
+                  onClick={handleUndoMerge}
+                  className="flex items-center gap-1 rounded-full bg-teal-900 px-3 py-1.5 text-xs text-mist-300 transition-colors hover:bg-teal-800"
+                >
+                  <Undo2 className="w-3 h-3" />
+                  撤销最近归并（{merges.length}）
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {sorted.length === 0 ? (
@@ -113,7 +181,12 @@ export default function TimelinePage() {
                     </div>
                     <div className="flex items-center gap-1 mb-1.5 text-mist-400">
                       <MapPin className="w-3 h-3" />
-                      <span className="text-xs">{scene.routeName}</span>
+                      <span className="text-xs">{mainNameOf(scene.routeName)}</span>
+                      {mainNameOf(scene.routeName) !== scene.routeName && (
+                        <span className="text-[10px] text-mist-500">
+                          原:{scene.routeName}
+                        </span>
+                      )}
                       <span className="mx-1 text-teal-700">·</span>
                       <span className="text-xs">{scene.seatDirection}侧</span>
                     </div>
@@ -163,7 +236,12 @@ export default function TimelinePage() {
             <div className="space-y-3 text-sm">
               <div className="flex items-center gap-2 text-mist-300">
                 <MapPin className="w-4 h-4 text-dusk-400" />
-                <span>{detailScene.routeName}</span>
+                <span>{mainNameOf(detailScene.routeName)}</span>
+                {mainNameOf(detailScene.routeName) !== detailScene.routeName && (
+                  <span className="text-xs text-mist-500">
+                    原记录:{detailScene.routeName}
+                  </span>
+                )}
                 <span className="text-teal-600">·</span>
                 <span>{detailScene.seatDirection}侧</span>
               </div>
@@ -199,6 +277,69 @@ export default function TimelinePage() {
               删除此窗景
             </button>
           </div>
+        </div>
+      )}
+
+      {mergeOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setMergeOpen(false)}
+        >
+          <div
+            className="relative mx-4 w-full max-w-md animate-scale-in rounded-2xl border border-teal-700 bg-teal-900 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setMergeOpen(false)}
+              className="absolute right-4 top-4 text-mist-400 hover:text-mist-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="mb-2 text-lg font-bold text-dusk-400">归并线路</h2>
+            <p className="mb-4 text-xs leading-relaxed text-mist-400">
+              将「{selectedRoute}」归并到另一条主线路。归并后筛选、详情与灵感都按主线路展示，记录里的原写法会保留，之后用旧写法记录也会自动归入。
+            </p>
+
+            <label className="mb-1 block text-xs text-mist-300">归并到主线路</label>
+            <input
+              list="merge-candidates"
+              value={mergeTarget}
+              onChange={(e) => {
+                setMergeTarget(e.target.value)
+                setMergeError('')
+              }}
+              placeholder="选择或输入主线路名称"
+              className="w-full rounded-lg border border-teal-800 bg-teal-950/60 px-3 py-2 text-sm text-mist-100 placeholder:text-mist-500 focus:border-dusk-400 focus:outline-none"
+            />
+            <datalist id="merge-candidates">
+              {mergeCandidates.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            {mergeError && <p className="mt-2 text-xs text-red-300">{mergeError}</p>}
+
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => setMergeOpen(false)}
+                className="flex-1 rounded-lg bg-teal-800/60 py-2.5 text-sm text-mist-300 transition-colors hover:bg-teal-800"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleMergeConfirm}
+                className="flex-1 rounded-lg bg-dusk-400 py-2.5 text-sm font-medium text-teal-950 transition-colors hover:bg-dusk-300"
+              >
+                确认归并
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-dusk-400/40 bg-teal-900 px-4 py-2 text-xs text-mist-100 shadow-lg shadow-black/30">
+          {toast}
         </div>
       )}
     </div>

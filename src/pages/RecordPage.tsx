@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
+import { resolveRouteName } from '@/services/routeMerges'
 import { getWeatherIcon, getTreeIcon, getPedestrianIcon, formatTimestamp } from '@/utils/sceneHelpers'
 import type { SceneFormData, Weather, TreeDensity, PedestrianStatus, SeatDirection } from '@/types'
 
@@ -35,6 +36,9 @@ export default function RecordPage() {
 
   const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }))
+
+  const trimmedRoute = form.routeName.trim()
+  const mergedRoute = trimmedRoute ? resolveRouteName(trimmedRoute) : ''
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,6 +76,11 @@ export default function RecordPage() {
             <div>
               <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Bus className="w-3 h-3" />线路</label>
               <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.routeName} onChange={(e) => update('routeName', e.target.value)} required />
+              {mergedRoute && mergedRoute !== trimmedRoute && (
+                <p className="mt-1 text-[11px] text-dusk-300/80">
+                  已归并:保存后自动归入「{mergedRoute}」，原写法保留在记录里
+                </p>
+              )}
             </div>
             <div>
               <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><MapPin className="w-3 h-3" />区间</label>

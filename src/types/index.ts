@@ -19,6 +19,13 @@ export interface WindowScene {
   note: string
 }
 
+export interface RouteMerge {
+  id: string
+  alias: string
+  target: string
+  createdAt: string
+}
+
 export interface SceneFormData {
   routeName: string
   segment: string
