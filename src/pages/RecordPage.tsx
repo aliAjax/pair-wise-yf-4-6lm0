@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
 import { getWeatherIcon, getTreeIcon, getPedestrianIcon, formatTimestamp } from '@/utils/sceneHelpers'
+import { resolveMaster } from '@/services/storage'
 import type { SceneFormData, Weather, TreeDensity, PedestrianStatus, SeatDirection } from '@/types'
 
 const WEATHERS: Weather[] = ['晴', '多云', '阴', '小雨', '大雨', '雪', '雾']
@@ -22,11 +23,16 @@ const initialForm: SceneFormData = {
 export default function RecordPage() {
   const saveScene = useSceneStore((s) => s.saveScene)
   const loadAll = useSceneStore((s) => s.loadAll)
+  const rawRouteNames = useSceneStore((s) => s.rawRouteNames)
   const [form, setForm] = useState<SceneFormData>(initialForm)
   const [now, setNow] = useState(new Date())
   const [showSuccess, setShowSuccess] = useState(false)
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  // 当前输入若是已归并的旧写法，提示它将进入的主线路
+  const typedMaster = form.routeName.trim() ? resolveMaster(form.routeName.trim()) : ''
+  const isAlias = typedMaster !== '' && typedMaster !== form.routeName.trim()
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000)
@@ -71,7 +77,17 @@ export default function RecordPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Bus className="w-3 h-3" />线路</label>
-              <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.routeName} onChange={(e) => update('routeName', e.target.value)} required />
+              <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.routeName} onChange={(e) => update('routeName', e.target.value)} list="route-name-list" required />
+              <datalist id="route-name-list">
+                {rawRouteNames.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+              {isAlias && (
+                <p className="mt-1 text-[11px] text-dusk-300/90">
+                  该写法已归并，记录将自动归入主线路「{typedMaster}」；原始写法仍会保留在记录里
+                </p>
+              )}
             </div>
             <div>
               <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><MapPin className="w-3 h-3" />区间</label>

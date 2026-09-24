@@ -9,6 +9,7 @@ import {
   getTimeOfDay,
 } from '@/utils/sceneHelpers'
 import { Lightbulb, RefreshCw, Quote, Bus, ArrowRight } from 'lucide-react'
+import { resolveMaster } from '@/services/storage'
 
 export default function InspirePage() {
   const { randomScene, refreshRandom, loadAll, scenes } = useSceneStore()
@@ -108,7 +109,14 @@ export default function InspirePage() {
             <div className="flex items-center justify-between text-sm text-mist-400">
               <div className="flex items-center gap-2">
                 <ArrowRight className="w-3.5 h-3.5 text-dusk-400" />
-                <span className="text-mist-100 font-medium">{randomScene.routeName}</span>
+                <span className="text-mist-100 font-medium">
+                  {resolveMaster(randomScene.routeName)}
+                </span>
+                {resolveMaster(randomScene.routeName) !== randomScene.routeName && (
+                  <span className="rounded bg-teal-800/60 px-1 py-px text-[10px] text-mist-400">
+                    原写法：{randomScene.routeName}
+                  </span>
+                )}
                 <span className="text-mist-500">·</span>
                 <span>{randomScene.segment}</span>
               </div>

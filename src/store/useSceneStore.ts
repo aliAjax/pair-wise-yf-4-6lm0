@@ -1,75 +1,108 @@
 import { create } from 'zustand'
-import type { WindowScene, SceneFormData } from '@/types'
+import type { WindowScene, SceneFormData, RouteGroup, MergeHistoryEntry } from '@/types'
 import {
   getAllScenes,
   saveScene as storageSaveScene,
   deleteScene as storageDeleteScene,
   getScenesByRoute,
-  getAllRouteNames,
+  getRouteGroups,
+  getAllRawRouteNames,
   getRandomScene,
+  mergeRoutes as storageMergeRoutes,
+  undoLastMerge as storageUndoLastMerge,
+  canUndoMerge,
 } from '@/services/storage'
 
 interface SceneState {
   scenes: WindowScene[]
-  routeNames: string[]
+  routeGroups: RouteGroup[]
+  rawRouteNames: string[]
   currentRouteScenes: WindowScene[]
   selectedRoute: string
   randomScene: WindowScene | null
+  undoAvailable: boolean
 
   loadAll: () => void
   saveScene: (data: SceneFormData) => void
   deleteScene: (id: string) => void
   selectRoute: (routeName: string) => void
   refreshRandom: () => void
+  mergeRoutes: (child: string, target: string) => boolean
+  undoLastMerge: () => MergeHistoryEntry | null
 }
 
-export const useSceneStore = create<SceneState>((set) => ({
-  scenes: [],
-  routeNames: [],
-  currentRouteScenes: [],
-  selectedRoute: '',
-  randomScene: null,
-
-  loadAll: () => {
+export const useSceneStore = create<SceneState>((set, get) => {
+  /** 重新从 localStorage 汇总，并让选中线路仍指向有效的主线路 */
+  const refresh = () => {
     const scenes = getAllScenes()
-    const routeNames = getAllRouteNames()
-    set({ scenes, routeNames })
-  },
+    const routeGroups = getRouteGroups()
+    const rawRouteNames = getAllRawRouteNames()
 
-  saveScene: (data: SceneFormData) => {
-    const scene: WindowScene = {
-      ...data,
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
+    let { selectedRoute } = get()
+    if (selectedRoute && !new Set(routeGroups.map((g) => g.master)).has(selectedRoute)) {
+      // 选中的主线路在归并/撤销后消失，回退到全部
+      selectedRoute = ''
     }
-    storageSaveScene(scene)
-    const scenes = getAllScenes()
-    const routeNames = getAllRouteNames()
-    set((state) => {
-      const currentRouteScenes =
-        state.selectedRoute ? getScenesByRoute(state.selectedRoute) : []
-      return { scenes, routeNames, currentRouteScenes }
+    const currentRouteScenes = selectedRoute ? getScenesByRoute(selectedRoute) : []
+
+    set({
+      scenes,
+      routeGroups,
+      rawRouteNames,
+      selectedRoute,
+      currentRouteScenes,
+      undoAvailable: canUndoMerge(),
     })
-  },
+  }
 
-  deleteScene: (id: string) => {
-    storageDeleteScene(id)
-    const scenes = getAllScenes()
-    const routeNames = getAllRouteNames()
-    set((state) => {
-      const currentRouteScenes =
-        state.selectedRoute ? getScenesByRoute(state.selectedRoute) : []
-      return { scenes, routeNames, currentRouteScenes }
-    })
-  },
+  return {
+    scenes: [],
+    routeGroups: [],
+    rawRouteNames: [],
+    currentRouteScenes: [],
+    selectedRoute: '',
+    randomScene: null,
+    undoAvailable: false,
 
-  selectRoute: (routeName: string) => {
-    const currentRouteScenes = routeName ? getScenesByRoute(routeName) : []
-    set({ selectedRoute: routeName, currentRouteScenes })
-  },
+    loadAll: () => {
+      refresh()
+    },
 
-  refreshRandom: () => {
-    const randomScene = getRandomScene()
-    set({ randomScene })
-  },
-}))
+    saveScene: (data: SceneFormData) => {
+      const scene: WindowScene = {
+        ...data,
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+      }
+      storageSaveScene(scene)
+      refresh()
+    },
+
+    deleteScene: (id: string) => {
+      storageDeleteScene(id)
+      refresh()
+    },
+
+    selectRoute: (routeName: string) => {
+      const currentRouteScenes = routeName ? getScenesByRoute(routeName) : []
+      set({ selectedRoute: routeName, currentRouteScenes })
+    },
+
+    refreshRandom: () => {
+      const randomScene = getRandomScene()
+      set({ randomScene })
+    },
+
+    mergeRoutes: (child, target) => {
+      const ok = storageMergeRoutes(child, target)
+      if (ok) refresh()
+      return ok
+    },
+
+    undoLastMerge: () => {
+      const entry = storageUndoLastMerge()
+      if (entry) refresh()
+      return entry
+    },
+  }
+})
